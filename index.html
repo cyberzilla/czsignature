@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+    <title>czSignature.js - Advanced Demo</title>
+    <style>
+        :root {
+            --primary-color: #007bff; --secondary-color: #6c757d; --background-color: #f8f9fa;
+            --panel-background: #ffffff; --text-color: #343a40; --border-color: #dee2e6;
+            --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0; background-color: var(--background-color); color: var(--text-color);
+            display: flex; flex-direction: column; min-height: 100vh;
+        }
+        header {
+            background-color: var(--panel-background); padding: 1rem 2rem;
+            border-bottom: 1px solid var(--border-color); box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            text-align: center; position: relative;
+        }
+        header h1 { margin: 0; color: var(--primary-color); font-size: 1.75rem; }
+        header p { margin: 0.25rem 0 0; color: var(--secondary-color); }
+        .github-link {
+            position: absolute; top: 50%; right: 2rem; transform: translateY(-50%);
+            display: inline-block; transition: transform 0.3s ease-in-out;
+        }
+        .github-link:hover { transform: translateY(-50%) scale(1.1) rotate(5deg); }
+        .github-link svg { width: 32px; height: 32px; fill: var(--text-color); }
+        .demo-container { display: flex; flex: 1; padding: 1.5rem; gap: 1.5rem; }
+        .controls-panel {
+            width: 320px; flex-shrink: 0; background-color: var(--panel-background);
+            border-radius: 12px; padding: 1.5rem; box-shadow: var(--shadow);
+            overflow-y: auto; height: fit-content;
+        }
+        .control-group { margin-bottom: 1.5rem; }
+        .control-group h3 {
+            margin: 0 0 1rem; font-size: 1rem; font-weight: 600;
+            border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;
+        }
+        .control { margin-bottom: 1rem; }
+        .control label, .radio-group-label {
+            display: flex; justify-content: space-between; font-size: 0.875rem;
+            margin-bottom: 0.5rem; font-weight: 500;
+        }
+        .control label .value-display { font-weight: 400; color: var(--secondary-color); }
+        .radio-group div { display: flex; gap: 1rem; }
+        input[type="range"] { width: 100%; cursor: pointer; }
+        input[type="color"] { width: 100%; height: 35px; border: 1px solid var(--border-color); border-radius: 6px; padding: 2px; cursor: pointer; }
+        .main-content { flex: 1; min-width: 0; }
+        .signature-wrapper { background-color: var(--panel-background); border-radius: 12px; padding: 1.5rem; box-shadow: var(--shadow); }
+        h2 { text-align: left; margin: 0 0 1rem; font-size: 1.25rem; }
+        .canvas-container {
+            width: 100%; aspect-ratio: 2.5; border: 1px solid var(--border-color);
+            border-radius: 8px; background-color: white; margin-bottom: 1rem; overflow: hidden;
+        }
+        .signature-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: none; border-radius: 8px; }
+        .actions-group { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+        .actions-group .btn {
+            flex: 1; min-width: 100px; padding: 0.75rem 1rem; font-size: 1rem;
+            border: none; border-radius: 6px; cursor: pointer; font-weight: 500;
+            color: white; transition: transform 0.1s, box-shadow 0.2s;
+        }
+        .actions-group .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .actions-group .btn:active { transform: translateY(0); }
+        .btn-clear { background-color: #dc3545; }
+        .btn-undo { background-color: #ffc107; color: #343a40 !important; }
+        .btn-save { background-color: #28a745; }
+        .output-options { display: flex; gap: 1rem; margin-bottom: 1rem; align-items: center; }
+        .signature-output { width: 100%; margin-top: 1rem; display: none; }
+        .signature-textarea {
+            width: 100%; min-height: 150px; font-family: 'Courier New', monospace; font-size: 12px;
+            padding: 1rem; border: 1px solid var(--border-color); border-radius: 6px;
+            resize: vertical; box-sizing: border-box; background-color: #e9ecef;
+        }
+        .signature-preview {
+            position: relative; width: 100%; border: 1px solid var(--border-color);
+            border-radius: 6px; padding: 1rem; background-color: white; display: flex;
+            justify-content: center; align-items: center; aspect-ratio: 2.5;
+            box-sizing: border-box; overflow: hidden; margin-top: 1rem;
+        }
+        .signature-preview svg, .signature-preview img { max-width: 100%; max-height: 100%; width: auto; height: auto; }
+        .btn-download {
+            position: absolute; top: 0.75rem; right: 0.75rem; padding: 0.5rem;
+            background-color: var(--primary-color); border: none; border-radius: 6px;
+            cursor: pointer; display: none; transition: background-color 0.2s, transform 0.2s;
+        }
+        .btn-download:hover { background-color: #0056b3; transform: scale(1.05); }
+        .btn-download svg { width: 24px; height: 24px; fill: white; display: block; }
+        footer { text-align: center; padding: 1.5rem; color: var(--secondary-color); font-size: 0.875rem; }
+        footer a { color: var(--primary-color); text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+        .signature-notification {
+            position: fixed; top: 20px; right: 20px; padding: 15px 20px; border-radius: 6px;
+            font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 10000;
+            transform: translateX(120%); transition: transform 0.3s ease-in-out; display: none;
+        }
+        .signature-notification.show { transform: translateX(0); display: block; }
+        .signature-notification-success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .signature-notification-error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        @media (max-width: 992px) {
+            .demo-container { flex-direction: column; }
+            .controls-panel { width: 100%; box-sizing: border-box; height: auto; }
+            .github-link { position: static; transform: none; margin-top: 1rem; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>czSignature.js Advanced Demo</h1>
+    <p>An interactive demonstration page for czSignature.js with customization options.</p>
+    <a href="https://github.com/cyberzilla/czSignature" class="github-link" target="_blank" rel="noopener noreferrer" title="View on GitHub">
+        <svg viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
+    </a>
+</header>
+
+<main class="demo-container">
+    <aside class="controls-panel">
+        <div class="control-group">
+            <h3>Appearance</h3>
+            <div class="control">
+                <label for="penColor">Pen Color</label>
+                <input type="color" id="penColor" value="#000000">
+            </div>
+            <div class="control">
+                <label for="backgroundColor">Background Color</label>
+                <input type="color" id="backgroundColor" value="#ffffff">
+            </div>
+        </div>
+
+        <div class="control-group">
+            <h3>Brush Dynamics</h3>
+            <div class="control">
+                <label for="minWidth">Min Width <span class="value-display" id="minWidth-val">0.5</span></label>
+                <input type="range" id="minWidth" min="0.1" max="5" step="0.1" value="0.5">
+            </div>
+            <div class="control">
+                <label for="maxWidth">Max Width <span class="value-display" id="maxWidth-val">2.5</span></label>
+                <input type="range" id="maxWidth" min="0.5" max="10" step="0.1" value="2.5">
+            </div>
+        </div>
+
+        <div class="control-group">
+            <h3>Smoothing & Simplification</h3>
+            <div class="control">
+                <label class="radio-group-label">Smoothing Mode</label>
+                <div class="radio-group">
+                    <label><input type="radio" name="smoothingMode" value="post" checked> Post</label>
+                    <label><input type="radio" name="smoothingMode" value="live"> Live</label>
+                </div>
+            </div>
+            <div class="control">
+                <label for="smoothingRatio">Smoothing Ratio <span class="value-display" id="smoothingRatio-val">0.5</span></label>
+                <input type="range" id="smoothingRatio" min="0" max="1" step="0.05" value="0.5">
+            </div>
+            <div class="control">
+                <label for="minDistance">Min Point Distance <span class="value-display" id="minDistance-val">0.8</span></label>
+                <input type="range" id="minDistance" min="0.1" max="5" step="0.1" value="0.8">
+            </div>
+            <div class="control">
+                <label for="smoothingFadePoints">Fade Points <span class="value-display" id="smoothingFadePoints-val">4</span></label>
+                <input type="range" id="smoothingFadePoints" min="0" max="10" step="1" value="4">
+            </div>
+        </div>
+    </aside>
+
+    <section class="main-content">
+        <div class="signature-wrapper" id="signature-container">
+            <h2>Signature Canvas</h2>
+            <div class="canvas-container">
+                <canvas class="signature-canvas"></canvas>
+            </div>
+            <div class="actions-group">
+                <button class="btn btn-clear signature-btn-clear">Clear</button>
+                <button class="btn btn-undo signature-btn-undo">Undo</button>
+                <button class="btn btn-save signature-btn-save">Save & Preview</button>
+            </div>
+            <div class="output-options">
+                <div class="signature-format-selector">
+                    <label><input type="radio" name="format" value="svg" checked> SVG</label>
+                    <label><input type="radio" name="format" value="png"> PNG</label>
+                    <label><input type="radio" name="format" value="jpg"> JPG</label>
+                </div>
+                <div class="signature-dpi-selector">
+                    <label for="dpi">DPI:</label>
+                    <select id="dpi" name="dpi">
+                        <option value="150">150</option>
+                        <option value="300" selected>300</option>
+                        <option value="600">600</option>
+                    </select>
+                </div>
+            </div>
+            <div class="signature-output">
+                <label class="signature-label">Output Code (Click to Copy):</label>
+                <textarea class="signature-textarea" readonly></textarea>
+                <label class="signature-label" style="margin-top: 1rem;">Preview:</label>
+                <div class="signature-preview">
+                    <button class="btn-download" title="Download Signature">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+</main>
+
+<footer>
+    <p>&copy Copyright Cyberzilla 2025</p>
+</footer>
+
+<script src="czSignature.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const canvas = document.querySelector('.signature-canvas');
+        const controlsPanel = document.querySelector('.controls-panel');
+        const signatureOutput = document.querySelector('.signature-output');
+        const signaturePreview = document.querySelector('.signature-preview');
+        const outputTextarea = document.querySelector('.signature-textarea');
+        const clearBtn = document.querySelector('.signature-btn-clear');
+        const undoBtn = document.querySelector('.signature-btn-undo');
+        const saveBtn = document.querySelector('.signature-btn-save');
+        const downloadBtn = document.querySelector('.btn-download');
+
+        let signaturePad;
+
+        const gatherOptions = () => {
+            const options = {};
+            const inputs = controlsPanel.querySelectorAll('input[type="range"], input[type="color"]');
+            inputs.forEach(input => {
+                const key = input.id;
+                options[key] = (input.type === 'range') ? parseFloat(input.value) : input.value;
+            });
+            // Mengambil nilai dari radio button smoothingMode
+            options.smoothingMode = document.querySelector('input[name="smoothingMode"]:checked').value;
+            return options;
+        };
+
+        const debounce = (func, delay) => {
+            let timeout;
+            return function(...args) {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(this, args), delay);
+            };
+        };
+
+        const showNotification = (message, type = 'success') => {
+            const notification = document.createElement('div');
+            notification.className = `signature-notification signature-notification-${type}`;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            setTimeout(() => {
+                notification.classList.add('show');
+            }, 10);
+            setTimeout(() => {
+                notification.classList.remove('show');
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        };
+
+        const dataURLToBlob = (dataURL, mimeType) => {
+            if (dataURL.startsWith('<svg')) {
+                return new Blob([dataURL], {type: mimeType});
+            }
+            const parts = dataURL.split(',');
+            const byteString = atob(parts[1]);
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            for (let i = 0; i < byteString.length; i++) {
+                ia[i] = byteString.charCodeAt(i);
+            }
+            return new Blob([ab], { type: mimeType });
+        };
+
+        const initializeSignaturePad = () => {
+            if (signaturePad) {
+                signaturePad.destroy();
+            }
+            signaturePad = new czSignature(canvas, gatherOptions());
+            signaturePad.on('clear', () => {
+                signatureOutput.style.display = 'none';
+                downloadBtn.style.display = 'none';
+            });
+            signaturePad.on('drawStart', () => {
+                signatureOutput.style.display = 'none';
+                downloadBtn.style.display = 'none';
+            });
+        };
+
+        controlsPanel.addEventListener('input', debounce((e) => {
+            if (e.target.type === 'range') {
+                const display = document.getElementById(`${e.target.id}-val`);
+                if (display) display.textContent = e.target.value;
+            }
+            initializeSignaturePad();
+            showNotification('Settings updated!', 'success');
+        }, 250));
+
+        clearBtn.addEventListener('click', () => signaturePad.clear());
+        undoBtn.addEventListener('click', () => signaturePad.undo());
+
+        saveBtn.addEventListener('click', () => {
+            if (signaturePad.isEmpty()) {
+                showNotification('Please draw a signature first.', 'error');
+                return;
+            }
+            const format = document.querySelector('input[name="format"]:checked').value;
+            const dpi = parseInt(document.getElementById('dpi').value);
+            let data, previewContent;
+            if (format === 'svg') {
+                data = signaturePad.toSVG();
+                previewContent = data;
+            } else {
+                const mimeType = format === 'jpg' ? 'image/jpeg' : 'image/png';
+                data = signaturePad.toDataURL(mimeType, dpi);
+                previewContent = `<img src="${data}" alt="Signature Preview">`;
+            }
+            outputTextarea.value = data;
+            signaturePreview.innerHTML = previewContent;
+            signaturePreview.appendChild(downloadBtn);
+            signatureOutput.style.display = 'block';
+            downloadBtn.style.display = 'block';
+        });
+
+        downloadBtn.addEventListener('click', () => {
+            const format = document.querySelector('input[name="format"]:checked').value;
+            const data = outputTextarea.value;
+            if (!data) return;
+            const mimeType = format === 'svg' ? 'image/svg+xml' : (format === 'jpg' ? 'image/jpeg' : 'image/png');
+            const filename = `signature.${format}`;
+            const blob = dataURLToBlob(data, mimeType);
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+
+        outputTextarea.addEventListener('click', () => {
+            if (!outputTextarea.value) return;
+            navigator.clipboard.writeText(outputTextarea.value)
+                .then(() => showNotification('Code copied to clipboard.', 'success'))
+                .catch(() => showNotification('Failed to copy code.', 'error'));
+        });
+
+        initializeSignaturePad();
+    });
+</script>
+</body>
+</html>
