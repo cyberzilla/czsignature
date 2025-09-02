@@ -68,7 +68,7 @@
         }
 
         toData() {
-            return [...this.#allStrokes];
+            return this.#allStrokes.map(stroke => ({ ...stroke, points: [...stroke.points] }));
         }
 
         fromData(data) {
@@ -77,7 +77,7 @@
                 return;
             }
             this.clear();
-            this.#allStrokes = data;
+            this.#allStrokes = data.map(stroke => ({ ...stroke, points: [...stroke.points] }));
             this.#redrawCanvas();
             this.#emit('load', { strokeCount: this.#allStrokes.length });
         }
