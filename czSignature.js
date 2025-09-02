@@ -1,22 +1,33 @@
+/**
+ * czSignature.js - v1.1
+ * A modern, lightweight, and event-driven JavaScript library for creating beautiful, pressure-sensitive digital signatures.
+ *
+ * Copyright (c) 2025 Cyberzilla
+ * MIT License
+ */
 (function(global) {
     'use strict';
 
     class czSignature {
-        // Default options
         _options = {
             penColor: '#000000',
             backgroundColor: '#ffffff',
             minWidth: 0.5,
             maxWidth: 2.5,
             velocityFilterWeight: 0.7,
-            dotSize: 2.0, // Digunakan sebagai fallback, tapi akan di-override oleh maxWidth untuk konsistensi
+            dotSize: 2.0,
             minDistance: 0.8,
             smoothingRatio: 0.5,
             smoothingFadePoints: 4,
-            smoothingMode: 'post' // Opsi: 'post' (setelah selesai) atau 'live' (saat menggambar)
+            smoothingMode: 'post',
+            pressureSupport: false,
+            dpi: 300,
+            trimOutput: false,
+            trimPadding: 16,
+            outputPenColor: null,
+            outputBackgroundColor: null,
         };
 
-        // Private state variables
         #isDrawing = false;
         #currentStroke = [];
         #allStrokes = [];
@@ -31,7 +42,6 @@
             this.#init();
         }
 
-        // --- PUBLIC API METHODS ---
         clear() {
             this.#resetState();
             this.#redrawCanvas();
@@ -57,39 +67,88 @@
             this.#redrawCanvas();
         }
 
+        toData() {
+            return [...this.#allStrokes];
+        }
+
+        fromData(data) {
+            if (!Array.isArray(data)) {
+                console.error("Data to load must be an array.");
+                return;
+            }
+            this.clear();
+            this.#allStrokes = data;
+            this.#redrawCanvas();
+            this.#emit('load', { strokeCount: this.#allStrokes.length });
+        }
+
         toSVG() {
-            const { canvasWidth, canvasHeight, options } = this;
-            let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${canvasWidth}" height="${canvasHeight}" viewBox="0 0 ${canvasWidth} ${canvasHeight}">\n`;
-            svgContent += `<rect width="100%" height="100%" fill="${options.backgroundColor}"/>\n`;
-            svgContent += '<g fill-rule="nonzero">\n';
+            const { trimOutput, trimPadding, outputBackgroundColor, outputPenColor } = this.options;
+            if (this.isEmpty()) return '';
+            let bbox = { minX: 0, minY: 0, width: this.canvasWidth, height: this.canvasHeight };
+            if (trimOutput) {
+                bbox = this.#calculateBoundingBox();
+                if (!bbox) return '';
+            }
+            const svgWidth = trimOutput ? bbox.width + trimPadding * 2 : this.canvasWidth;
+            const svgHeight = trimOutput ? bbox.height + trimPadding * 2 : this.canvasHeight;
+            const viewBoxX = trimOutput ? bbox.minX - trimPadding : 0;
+            const viewBoxY = trimOutput ? bbox.minY - trimPadding : 0;
+            const viewBox = `${viewBoxX} ${viewBoxY} ${svgWidth} ${svgHeight}`;
+            let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${svgHeight}" viewBox="${viewBox}">\n`;
+            const finalBgColor = outputBackgroundColor ?? this.options.backgroundColor;
+            if (finalBgColor !== 'transparent') {
+                svgContent += `  <rect x="${viewBoxX}" y="${viewBoxY}" width="${svgWidth}" height="${svgHeight}" fill="${finalBgColor}"/>\n`;
+            }
+            svgContent += '  <g fill-rule="nonzero">\n';
             this.#allStrokes.forEach((stroke) => {
                 const { points, color, minWidth, maxWidth } = stroke;
                 if (points.length === 0) return;
+                const finalPenColor = outputPenColor ?? color;
                 const widths = this.#calculateWidths(points, minWidth, maxWidth);
                 const pathData = this.#generateSmoothSvgPathData(points, widths);
                 if (pathData) {
-                    svgContent += `<path d="${pathData}" fill="${color}" stroke="none"/>\n`;
+                    svgContent += `    <path d="${pathData}" fill="${finalPenColor}" stroke="none"/>\n`;
                 }
             });
-            svgContent += '</g>\n</svg>';
+            svgContent += '  </g>\n</svg>';
             return svgContent.trim();
         }
 
-        toDataURL(format = 'image/png', dpi = 300) {
+        toDataURL(format = 'image/png') {
+            const { dpi, trimOutput, trimPadding, outputBackgroundColor, outputPenColor } = this.options;
+            if (this.isEmpty()) return "data:,";
             const mimeType = format.toLowerCase();
             const quality = mimeType === 'image/jpeg' ? 0.92 : 1.0;
             const scale = dpi / 96;
             const tempCanvas = document.createElement('canvas');
             const tempCtx = tempCanvas.getContext('2d');
-            tempCanvas.width = this.canvasWidth * scale;
-            tempCanvas.height = this.canvasHeight * scale;
+            let targetWidth = this.canvasWidth;
+            let targetHeight = this.canvasHeight;
+            let translateX = 0;
+            let translateY = 0;
+            if (trimOutput) {
+                const bbox = this.#calculateBoundingBox();
+                if (!bbox) return "data:,";
+                targetWidth = bbox.width + trimPadding * 2;
+                targetHeight = bbox.height + trimPadding * 2;
+                translateX = -bbox.minX + trimPadding;
+                translateY = -bbox.minY + trimPadding;
+            }
+            tempCanvas.width = targetWidth * scale;
+            tempCanvas.height = targetHeight * scale;
             tempCtx.scale(scale, scale);
+            const finalBgColor = outputBackgroundColor ?? this.options.backgroundColor;
+            if (finalBgColor !== 'transparent') {
+                tempCtx.fillStyle = finalBgColor;
+                tempCtx.fillRect(0, 0, targetWidth, targetHeight);
+            }
+            tempCtx.translate(translateX, translateY);
             tempCtx.lineCap = 'round';
             tempCtx.lineJoin = 'round';
-            tempCtx.fillStyle = this.options.backgroundColor;
-            tempCtx.fillRect(0, 0, this.canvasWidth, this.canvasHeight);
             this.#allStrokes.forEach((stroke) => {
-                this.#drawStroke(tempCtx, stroke.points, stroke.color, stroke.minWidth, stroke.maxWidth);
+                const finalPenColor = outputPenColor ?? stroke.color;
+                this.#drawStroke(tempCtx, stroke.points, finalPenColor, stroke.minWidth, stroke.maxWidth);
             });
             return tempCanvas.toDataURL(mimeType, quality);
         }
@@ -100,11 +159,8 @@
             this.#emit('destroy');
         }
 
-        // --- EVENT EMITTER ---
         on(eventName, callback) {
-            if (!this.#listeners[eventName]) {
-                this.#listeners[eventName] = [];
-            }
+            if (!this.#listeners[eventName]) { this.#listeners[eventName] = []; }
             this.#listeners[eventName].push(callback);
         }
 
@@ -114,12 +170,10 @@
             }
         }
 
-        // --- PRIVATE METHODS ---
         #init() {
             this.#setupCanvas();
             this.#addEventListeners();
             this.#setupResizeHandler();
-            this.#resetState();
             this.clear();
         }
 
@@ -147,23 +201,17 @@
             this.boundStart = this.#startDrawing;
             this.boundDraw = this.#draw;
             this.boundStop = this.#stopDrawing;
-            this.canvas.addEventListener('mousedown', this.boundStart);
-            this.canvas.addEventListener('mousemove', this.boundDraw);
-            document.addEventListener('mouseup', this.boundStop);
-            document.addEventListener('mouseleave', this.boundStop);
-            this.canvas.addEventListener('touchstart', this.boundStart, { passive: false });
-            this.canvas.addEventListener('touchmove', this.boundDraw, { passive: false });
-            document.addEventListener('touchend', this.boundStop);
+            this.canvas.addEventListener('pointerdown', this.boundStart);
+            this.canvas.addEventListener('pointermove', this.boundDraw);
+            document.addEventListener('pointerup', this.boundStop);
+            document.addEventListener('pointercancel', this.boundStop);
         }
 
         #removeEventListeners = () => {
-            this.canvas.removeEventListener('mousedown', this.boundStart);
-            this.canvas.removeEventListener('mousemove', this.boundDraw);
-            document.removeEventListener('mouseup', this.boundStop);
-            document.removeEventListener('mouseleave', this.boundStop);
-            this.canvas.removeEventListener('touchstart', this.boundStart);
-            this.canvas.removeEventListener('touchmove', this.boundDraw);
-            document.removeEventListener('touchend', this.boundStop);
+            this.canvas.removeEventListener('pointerdown', this.boundStart);
+            this.canvas.removeEventListener('pointermove', this.boundDraw);
+            document.removeEventListener('pointerup', this.boundStop);
+            document.removeEventListener('pointercancel', this.boundStop);
         }
 
         #setupResizeHandler = () => {
@@ -179,12 +227,19 @@
 
         #getCoordinates = (event) => {
             const rect = this.canvas.getBoundingClientRect();
-            const touch = event.touches ? event.touches[0] : event;
-            return { x: touch.clientX - rect.left, y: touch.clientY - rect.top, time: Date.now() };
+            let x = event.clientX - rect.left;
+            let y = event.clientY - rect.top;
+            const halfPenWidth = (this.options.maxWidth || this.options.dotSize) / 2;
+            x = Math.max(halfPenWidth, Math.min(x, this.canvasWidth - halfPenWidth));
+            y = Math.max(halfPenWidth, Math.min(y, this.canvasHeight - halfPenWidth));
+            const pressure = event.pressure > 0 ? event.pressure : 0.5;
+            return { x, y, time: Date.now(), pressure };
         }
 
         #startDrawing = (event) => {
+            if (event.button !== 0) return;
             event.preventDefault();
+            this.canvas.setPointerCapture(event.pointerId);
             this.#isDrawing = true;
             this.#currentStroke = [this.#getCoordinates(event)];
             this.#emit('drawStart', { event });
@@ -193,29 +248,29 @@
         #draw = (event) => {
             if (!this.#isDrawing) return;
             event.preventDefault();
-            this.#currentStroke.push(this.#getCoordinates(event));
-            if (!this.#drawing) {
-                this.#drawing = true;
-                requestAnimationFrame(() => {
-                    this.#redrawCanvas();
-                    this.#drawing = false;
-                });
+            if(this.canvas.hasPointerCapture(event.pointerId)) {
+                this.#currentStroke.push(this.#getCoordinates(event));
+                if (!this.#drawing) {
+                    this.#drawing = true;
+                    requestAnimationFrame(() => {
+                        this.#redrawCanvas();
+                        this.#drawing = false;
+                    });
+                }
             }
         }
 
-        #stopDrawing = () => {
+        #stopDrawing = (event) => {
             if (!this.#isDrawing) return;
+            if(this.canvas.hasPointerCapture(event.pointerId)) {
+                this.canvas.releasePointerCapture(event.pointerId);
+            }
             this.#isDrawing = false;
-
             let newStroke = null;
             if (this.#currentStroke.length > 0) {
-                // **FIX APPLIED HERE**: Logic is now simpler and correct.
-                // A multi-point stroke is ALWAYS simplified before being stored.
-                // The 'smoothingMode' only affects the real-time drawing, not the final data.
                 const strokePoints = (this.#currentStroke.length > 1)
                     ? this.#simplifyStroke(this.#currentStroke)
                     : this.#currentStroke;
-
                 newStroke = {
                     points: strokePoints,
                     color: this.options.penColor,
@@ -224,11 +279,7 @@
                 };
                 this.#allStrokes.push(newStroke);
             }
-
-            if (newStroke) {
-                this.#emit('drawEnd', { stroke: newStroke });
-            }
-
+            if (newStroke) { this.#emit('drawEnd', { stroke: newStroke }); }
             this.#currentStroke = [];
             this.#redrawCanvas();
         }
@@ -236,17 +287,13 @@
         #redrawCanvas = () => {
             this.ctx.fillStyle = this.options.backgroundColor;
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
             this.#allStrokes.forEach((stroke) => {
                 this.#drawStroke(this.ctx, stroke.points, stroke.color, stroke.minWidth, stroke.maxWidth);
             });
-
             if (this.#isDrawing && this.#currentStroke && this.#currentStroke.length > 0) {
-                // This logic correctly handles the visual feedback for both smoothing modes
                 const strokeToDraw = (this.options.smoothingMode === 'live' && this.#currentStroke.length > 1)
                     ? this.#simplifyStroke(this.#currentStroke)
                     : this.#currentStroke;
-
                 this.#drawStroke(this.ctx, strokeToDraw, this.options.penColor, this.options.minWidth, this.options.maxWidth);
             }
         }
@@ -274,7 +321,7 @@
                 const dynamicRatio = this.options.smoothingRatio * Math.min(fadeInRatio, fadeOutRatio);
                 const smoothedX = current.x * (1 - dynamicRatio) + (prev.x + next.x) / 2 * dynamicRatio;
                 const smoothedY = current.y * (1 - dynamicRatio) + (prev.y + next.y) / 2 * dynamicRatio;
-                smoothedPoints.push({ x: smoothedX, y: smoothedY, time: current.time });
+                smoothedPoints.push({ x: smoothedX, y: smoothedY, time: current.time, pressure: current.pressure });
             }
             smoothedPoints.push(simplifiedPoints[simplifiedPoints.length - 1]);
             return smoothedPoints;
@@ -314,18 +361,40 @@
         #calculateWidths = (points, minWidth, maxWidth) => {
             const widths = [];
             let lastVelocity = 0;
+            const usePressure = this.options.pressureSupport && points.some(p => p.pressure > 0 && p.pressure < 1);
             for (let i = 0; i < points.length; i++) {
-                let velocity = 0;
-                if (i > 0) {
-                    const distance = Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
-                    const time = points[i].time - points[i - 1].time;
-                    velocity = time > 0 ? distance / time : lastVelocity;
+                let width;
+                if (usePressure) {
+                    width = minWidth + (maxWidth - minWidth) * points[i].pressure;
+                } else {
+                    let velocity = 0;
+                    if (i > 0) {
+                        const distance = Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+                        const time = points[i].time - points[i - 1].time;
+                        velocity = time > 0 ? distance / time : lastVelocity;
+                    }
+                    lastVelocity = (velocity * (1 - this.options.velocityFilterWeight)) + (lastVelocity * this.options.velocityFilterWeight);
+                    width = Math.max(minWidth, Math.min(maxWidth, maxWidth - (lastVelocity * 1.5)));
                 }
-                lastVelocity = (velocity * (1 - this.options.velocityFilterWeight)) + (lastVelocity * this.options.velocityFilterWeight);
-                const width = Math.max(minWidth, Math.min(maxWidth, maxWidth - (lastVelocity * 1.5)));
                 widths.push(width);
             }
             return widths;
+        }
+
+        #calculateBoundingBox = () => {
+            if (this.isEmpty()) return null;
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            this.#allStrokes.forEach(stroke => {
+                const widths = this.#calculateWidths(stroke.points, stroke.minWidth, stroke.maxWidth);
+                stroke.points.forEach((point, index) => {
+                    const halfWidth = widths[index] / 2;
+                    minX = Math.min(minX, point.x - halfWidth);
+                    maxX = Math.max(maxX, point.x + halfWidth);
+                    minY = Math.min(minY, point.y - halfWidth);
+                    maxY = Math.max(maxY, point.y + halfWidth);
+                });
+            });
+            return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
         }
 
         #generateSmoothSvgPathData = (points, widths) => {
@@ -362,6 +431,7 @@
             const startCapRadius = (widths[0] / 2).toFixed(2);
             pathData += `M${outline1[0].x.toFixed(2)},${outline1[0].y.toFixed(2)}`;
             pathData += ` A${startCapRadius},${startCapRadius} 0 0 1 ${outline2[0].x.toFixed(2)},${outline2[0].y.toFixed(2)}`;
+
             for (let i = 0; i < outline2.length - 1; i++) {
                 const p1 = outline2[i];
                 const p2 = outline2[i + 1];
@@ -370,8 +440,10 @@
                 pathData += ` Q${p1.x.toFixed(2)},${p1.y.toFixed(2)} ${midX.toFixed(2)},${midY.toFixed(2)}`;
             }
             pathData += ` L${outline2[outline2.length - 1].x.toFixed(2)},${outline2[outline2.length - 1].y.toFixed(2)}`;
+
             const endCapRadius = (widths[widths.length - 1] / 2).toFixed(2);
             pathData += ` A${endCapRadius},${endCapRadius} 0 0 1 ${outline1[outline1.length - 1].x.toFixed(2)},${outline1[outline1.length - 1].y.toFixed(2)}`;
+
             for (let i = outline1.length - 2; i >= 0; i--) {
                 const p1 = outline1[i + 1];
                 const p2 = outline1[i];
